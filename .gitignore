@@ -6,3 +6,8 @@ logs/
 node_modules/
 .DS_Store
 __pycache__/
+
+# Earlier mockups, screenshots and test scripts from designing this. Some contain real project data.
+design-history/
+.playwright-mcp/
+.impeccable/
