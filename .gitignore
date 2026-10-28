@@ -1,0 +1,8 @@
+# Scanned data and the built page hold your real project details. They are deployed to the private site only.
+data/
+dist/
+logs/
+.wrangler/
+node_modules/
+.DS_Store
+__pycache__/
