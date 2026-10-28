@@ -19,6 +19,14 @@ else
   echo '{"items": []}' > data/untracked.json
 fi
 
+# Safety lock: never publish real project data to a site anyone can open. With Cloudflare Access in front, the
+# site answers a signed-out request with a redirect to the sign-in page (302), not the page itself (200).
+STATUS="$(curl -s -o /dev/null -w '%{http_code}' "https://$PROJECT.pages.dev/")"
+if [ "$STATUS" = "200" ]; then
+  echo "Not deploying: https://$PROJECT.pages.dev is open to anyone (HTTP 200). Turn on Cloudflare Access first."
+  exit 1
+fi
+
 python3 scanner/scan.py "$HOME/Projects" data/projects.json
 python3 build.py
 npx --yes wrangler pages deploy dist --project-name "$PROJECT" --branch main --commit-dirty=true

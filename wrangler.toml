@@ -1,0 +1,8 @@
+name = "projects-tracking-dashboard"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-01"
+
+# Ideas, pins and the untracked list. ALLOWED_EMAIL is a Pages secret, not set here.
+[[kv_namespaces]]
+binding = "DB"
+id = "273bbcd136b140959e390cf59698000c"
