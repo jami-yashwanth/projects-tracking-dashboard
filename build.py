@@ -12,7 +12,7 @@ icons = (site / "icons.html").read_text().replace(
 app = (site / "app.js").read_text()
 app = app.replace("/*DATA*/null", json.dumps(data).replace("</", "<\\/"))
 app = app.replace("/*ICONS*/{}", (site / "stack-icons.json").read_text())
-css = (site / "board.css").read_text().replace("#FAFAF8", "var(--head)") + "\n" + (site / "extra.css").read_text()
+css = "\n".join([(site / "board.css").read_text().replace("#FAFAF8", "var(--head)"), (site / "extra.css").read_text(), (site / "theme.css").read_text()])
 
 page = f"""<!doctype html>
 <html lang="en">
@@ -36,10 +36,11 @@ page = f"""<!doctype html>
 <div class="app">
   <aside class="side" id="side"></aside>
   <div class="main">
-    <div class="phone-top"><div class="logo"><b><i></i></b>Dashboard</div><button class="icon-btn" data-menu aria-label="Open menu"><svg class="i"><use href="#menu"/></svg></button></div>
+    <div class="phone-top"><div class="logo"><b><i></i></b>Dashboard</div></div>
     <header class="top">
-      <label class="search"><svg class="i"><use href="#search"/></svg><input id="q" type="search" placeholder="Search projects, services, stack" autocomplete="off" aria-label="Search projects"><kbd>⌘K</kbd></label>
+      <h1 id="pageTitle" class="page-t">Overview</h1>
       <div class="grow"></div>
+      <label class="search"><svg class="i"><use href="#search"/></svg><input id="q" type="search" placeholder="Search projects, services, stack" autocomplete="off" aria-label="Search projects"><kbd>⌘K</kbd></label>
       <button class="btn primary" data-capture><svg class="i"><use href="#bulb"/></svg>Capture idea<kbd>I</kbd></button>
     </header>
     <div class="content">
@@ -48,6 +49,7 @@ page = f"""<!doctype html>
     </div>
   </div>
 </div>
+<nav class="tabs" id="tabs" aria-label="Sections"></nav>
 <button class="fab" data-capture aria-label="Capture idea"><svg class="i"><use href="#plus"/></svg></button>
 <div id="overlay"></div>
 <script>

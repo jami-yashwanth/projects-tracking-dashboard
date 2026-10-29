@@ -136,23 +136,17 @@ function shortAgo(iso) {
 }
 const sideLink = p => `<a data-go="${p.id}" class="${state.view === p.id ? "on" : ""}">${tile(p)}<span class="nm">${esc(p.name)}</span><span class="ago">${shortAgo(p.last)}</span></a>`;
 
+// Icon rail (laptop) and bottom tabs (phone). Pinned projects sit in the rail as their letter tiles.
+const NAV = [["", "grid", "Overview"], ["ideas", "bulb", "Ideas"], ["services", "layers", "Services"]];
 function sidebar() {
-  const group = (title, list) => list.length ? `<div><h4>${title}</h4><div class="plist">${list.map(p =>
-    sideLink(p)).join("")}</div></div>` : "";
   const pinned = state.pins.map(id => P.find(p => p.id === id)).filter(Boolean);
-  const rest = P.filter(p => !isPinned(p));
-  const active = rest.filter(p => p.status === "active"), quiet = rest.filter(p => p.status === "quiet" || p.status === "paused"), old = rest.filter(p => p.status === "dormant");
+  const isOn = v => state.view === v || (v === "" && !NAV.some(n => n[0] === state.view) && !P.some(p => p.id === state.view));
   byId("side").innerHTML = `
-    <button class="close icon-btn" data-menu aria-label="Close menu">${icon("x")}</button>
-    <div class="logo"><b><i></i></b>Dashboard</div>
-    <nav class="nav">
-      <a data-go="" class="${state.view === "" ? "on" : ""}">${icon("grid")}Today</a>
-      <a data-go="services" class="${state.view === "services" ? "on" : ""}">${icon("layers")}Services<span class="count">${new Set(P.flatMap(p => p.services.map(s => s.name))).size}</span></a>
-    </nav>
-    <hr>
-    ${group("Pinned", pinned)}${group("Active", active)}${group("Going quiet", quiet)}
-    ${old.length ? `<div><h4>Older</h4><div class="plist">${old.map(sideLink).join("")}</div></div>` : ""}
-    <div class="foot"><span class="dot-live"></span>Scanned your Mac ${ago(DATA.generated).toLowerCase()} at ${time(DATA.generated)}</div>`;
+    <a class="rail-logo" data-go="" aria-label="Overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="2.2"/><rect x="13" y="3" width="8" height="8" rx="2.2" opacity=".45"/><rect x="3" y="13" width="8" height="8" rx="2.2" opacity=".45"/><rect x="13" y="13" width="8" height="8" rx="2.2"/></svg></a>
+    <nav class="rail-nav">${NAV.map(([v, ic, label]) => `<a data-go="${v}" class="${isOn(v) ? "on" : ""}" aria-label="${label}" title="${label}">${icon(ic)}</a>`).join("")}</nav>
+    ${pinned.length ? `<div class="rail-pins">${pinned.map(p => `<a data-go="${p.id}" class="${state.view === p.id ? "on" : ""}" title="${esc(p.name)}" aria-label="${esc(p.name)}">${tile(p)}</a>`).join("")}</div>` : ""}
+    <div class="rail-foot" title="Scanned your Mac ${ago(DATA.generated).toLowerCase()} at ${time(DATA.generated)}"><span class="dot-live"></span>${time(DATA.generated)}</div>`;
+  byId("tabs").innerHTML = NAV.map(([v, ic, label]) => `<a data-go="${v}" class="${isOn(v) ? "on" : ""}">${icon(ic)}<span>${label}</span></a>`).join("");
 }
 
 function matches(p) {
@@ -160,56 +154,88 @@ function matches(p) {
   return [p.name, p.next, p.blocked, p.description, ...p.stack, ...p.services.map(s => s.name)].join(" ").toLowerCase().includes(q);
 }
 
+// The main logo for a project: its app framework's brand mark when we have one, else its letter tile.
+function mainMark(p) {
+  const app = (p.built.find(b => b.layer === "App")?.items || []).concat(p.built.find(b => b.layer === "Language")?.items || []);
+  const hit = app.find(i => ICONS[i.name] || ICONS[i.name.replace(/ [\d.]+$/, "")]);
+  return hit ? `<span class="mark">${logo(hit.name)}</span>` : `<span class="mark">${esc(initials(p.name))}</span>`;
+}
+const stackLine = p => MAIN_LAYERS.slice(0, 2).flatMap(l => (p.built.find(b => b.layer === l)?.items || []).slice(0, 1).map(i => i.name)).join(", ");
+const PASTEL = ["lilac", "mint", "cream", "sky"];
+
+function activityCard() {
+  const days = [...Array(14)].map((_, i) => P.reduce((n, p) => n + (p.activity[i] || 0), 0));
+  const total = days.reduce((a, b) => a + b, 0), week = days.slice(7).reduce((a, b) => a + b, 0), prev = days.slice(0, 7).reduce((a, b) => a + b, 0);
+  const moving = P.filter(p => p.activity.slice(7).some(Boolean)).length;
+  const W = 520, H = 120, max = Math.max(1, ...days), x = i => 6 + i * (W - 12) / 13, y = n => H - 10 - n / max * (H - 34);
+  const pts = days.map((n, i) => `${x(i).toFixed(1)},${y(n).toFixed(1)}`);
+  const peak = days.indexOf(max);
+  const delta = prev ? Math.round((week - prev) / prev * 100) : null;
+  return `<section class="act-card">
+    <div class="act-top"><div><div class="act-n">${week}</div><div class="act-l">commits this week</div></div>
+      <span class="act-d ${delta === null ? "" : delta >= 0 ? "up" : "down"}">${delta === null ? `${total} in 14 days` : `${delta >= 0 ? "+" : ""}${delta}% vs last week`}</span></div>
+    <svg class="act-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Commits per day over the last 14 days, ${total} in total" role="img">
+      <path class="area" d="M${pts[0]} L${pts.join(" L")} L${x(13)},${H} L${x(0)},${H} Z"/>
+      <polyline class="line" points="${pts.join(" ")}"/>
+      ${days[peak] ? `<line class="guide" x1="${x(peak)}" x2="${x(peak)}" y1="${y(max)}" y2="${H}"/><circle class="dot" cx="${x(peak)}" cy="${y(max)}" r="5"/>` : ""}
+    </svg>
+    ${days[peak] ? `<div class="act-tip" style="left:${(x(peak) / W * 100).toFixed(1)}%">${max} commits</div>` : ""}
+    <div class="act-ax"><span>2 weeks ago</span><span>${moving} ${moving === 1 ? "project" : "projects"} moved this week</span><span>Today</span></div>
+  </section>`;
+}
+
+function pinCards() {
+  const pinned = state.pins.map(id => P.find(p => p.id === id)).filter(Boolean).slice(0, 3);
+  if (!pinned.length) return `<div class="pin-empty"><b>Pin up to three projects</b><span>Open a project and tap Pin to top. It shows up here as a card.</span></div>`;
+  return pinned.map((p, i) => `<a class="pcard c-${PASTEL[i % PASTEL.length]}" data-go="${p.id}">
+      <div class="pc-top"><b>${esc(p.name)}</b>${pinBtn(p)}</div>
+      <div class="pc-sub">${esc(stackLine(p) || "No stack detected")}</div>
+      <div class="pc-bot">${mainMark(p)}<span class="pc-meta"><span>${ago(p.last)}</span><span>${p.git ? (p.dirty ? `${p.dirty} uncommitted` : "All committed") : ""}</span></span></div>
+    </a>`).join("");
+}
+
+function ideasPromo() {
+  const open = state.ideas.filter(i => !i.done);
+  const last = open[0];
+  return `<section class="promo">
+    <h2>Got an idea? <span class="ring">Save</span> it before it's gone.</h2>
+    <p>${last ? `Latest: “${esc(last.text.length > 80 ? last.text.slice(0, 80) + "…" : last.text)}”${last.projectName ? ` for ${esc(last.projectName)}` : ""}` : "Feature ideas for a project, or a whole new project. Press I on a laptop or + on your phone."}</p>
+    <div class="promo-b"><button class="pill-btn" data-capture>Capture idea</button>${open.length ? `<a class="promo-link" data-go="ideas">${open.length} open ${open.length === 1 ? "idea" : "ideas"}</a>` : ""}</div>
+    <svg class="promo-art" viewBox="0 0 200 160" aria-hidden="true"><rect x="40" y="20" width="120" height="150" rx="16" transform="rotate(-14 100 95)"/><rect x="60" y="30" width="120" height="150" rx="16" transform="rotate(-4 120 105)"/></svg>
+  </section>`;
+}
+
 function todayView() {
-  const h = new Date().getHours();
-  const hello = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-  const d = new Date();
   const active = P.filter(p => p.status === "active").length, quiet = P.filter(p => p.status === "quiet").length;
-  const dirty = P.reduce((n, p) => n + p.dirty, 0);
-  const pinned = state.pins.map(id => P.find(p => p.id === id)).filter(p => p && matches(p));
-  const main = P.filter(p => !isPinned(p) && p.status !== "dormant" && matches(p)), old = P.filter(p => !isPinned(p) && p.status === "dormant" && matches(p));
-  const rows = [...pinned, ...main, ...(state.showOld || state.query ? old : [])].map(p => {
-    const last = p.commits[0]?.msg;
-    const next = p.next ? `${esc(p.next)}${p.blocked ? `<span class="blk">Blocked: ${esc(p.blocked)}</span>` : ""}`
-      : `<span class="muted">No next step yet</span>${last ? `<span class="last">Last commit: ${esc(last)}</span>` : p.description ? `<span class="last">${esc(p.description)}</span>` : ""}`;
-    return `<tr class="rowlink ${isPinned(p) ? "pinned" : ""}" data-go="${p.id}" tabindex="0"><td><div class="pname">${tile(p)}${esc(p.name)}${pinBtn(p)}</div></td>
-      <td class="next">${next}</td>
-      <td><div class="meta"><span>${ago(p.last)}</span>${p.git ? `<span title="Uncommitted files">${icon("file")}${p.dirty}</span>` : ""}</div></td>
-      <td>${pill(p.status, p.blocked)}</td></tr>`;
-  }).join("");
-
-  // This week, Monday to Sunday, across every project.
-  const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-  const week = P.flatMap(p => p.week.map(c => ({ ...c, project: p }))).sort((a, b) => b.when.localeCompare(a.when));
-  const perDay = [...Array(7)].map((_, i) => { const day = new Date(monday); day.setDate(monday.getDate() + i);
-    return { day, n: week.filter(c => { const w = new Date(c.when); w.setHours(0, 0, 0, 0); return +w === +day; }).length }; });
-  const maxN = Math.max(1, ...perDay.map(x => x.n));
-
+  const pinnedIds = state.pins;
+  const main = P.filter(p => p.status !== "dormant" && matches(p)), old = P.filter(p => p.status === "dormant" && matches(p));
+  const rows = [...main, ...(state.showOld || state.query ? old : [])].sort((a, b) => (pinnedIds.includes(b.id) - pinnedIds.includes(a.id)) || a.idle - b.idle).map(p => `
+    <tr class="rowlink" data-go="${p.id}" tabindex="0">
+      <td><div class="nm">${mainMark(p)}<div><b>${esc(p.name)}</b><span>${esc(stackLine(p) || "No stack detected")}</span></div></div></td>
+      <td class="num">${ago(p.last)}</td>
+      <td class="num ${p.dirty ? "warn" : "ok"}">${p.git ? (p.dirty ? `${p.dirty} files` : "Clean") : "No git"}</td>
+      <td>${pill(p.status, p.blocked)}</td>
+      <td class="pin-col">${pinBtn(p)}</td>
+    </tr>`).join("");
   return `
-    <div class="hello"><div><div class="date">${d.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</div><h1>${hello}, Yashwanth</h1></div></div>
-    <div><div class="stats">
-      <div class="stat">${icon("bolt")}<b>${active}</b>active</div>
-      <div class="stat warn">${icon("moon")}<b>${quiet}</b>going quiet</div>
-      <div class="stat">${icon("file")}<b>${dirty}</b>uncommitted files</div>
-    </div></div>
-    <section class="card">
-      <div class="card-h">${icon("list")}<h2>My projects</h2><span class="grow"></span><span class="hint">${state.pinNote || (state.pins.length ? `${state.pins.length} pinned` : "Pin a project to keep it on top")}</span></div>
-      ${state.undo ? `<div class="undo" role="status">Stopped tracking ${esc(state.undo.name)}.<button data-restore="${esc(state.undo.id)}">Undo</button></div>` : ""}
-      ${rows ? `<table class="tbl"><thead><tr><th>${icon("folder")}Project</th><th>${icon("target")}Next step</th><th>${icon("clock")}Last change</th><th>${icon("status")}Status</th></tr></thead><tbody>${rows}</tbody></table>`
-        : `<div class="empty"><b>No projects match “${esc(state.query)}”</b>Try a service like Stripe, a stack like Next.js, or clear the search.</div>`}
-      ${!state.query && old.length ? `<div class="showmore"><button data-old>${state.showOld ? "Hide older projects" : `Show ${old.length} older projects`}</button></div>` : ""}
-      ${state.hidden.length ? `<div class="untracked"><button data-hidden-toggle aria-expanded="${state.showHidden}">${state.hidden.length} ${state.hidden.length === 1 ? "project" : "projects"} not tracked${icon("chev")}</button>
-        ${state.showHidden ? `<div class="untracked-list">${state.hidden.map(h => `<div><span>${esc(h.name)}</span><button class="btn sm" data-restore="${esc(h.id)}">Track again</button></div>`).join("")}</div>` : ""}</div>` : ""}
-    </section>
-    <div class="duo">
-      <section class="card">
-        <div class="card-h">${icon("cal")}<h2>This week</h2></div>
-        <div class="week">${perDay.map(({ day, n }) => `<div class="wd ${+day === +today ? "on" : ""}">${day.toLocaleDateString([], { weekday: "short" }).slice(0, 2)}<b>${day.getDate()}</b><span class="bars">${n ? `<i style="height:${Math.max(3, n / maxN * 14)}px"></i>` : `<i class="z"></i>`}</span></div>`).join("")}</div>
-        ${week.length ? week.slice(0, 5).map(c => `<a class="ev" data-go="${c.project.id}"><span class="bar" style="background:var(--${c.project.color === "grey" ? "line-2" : c.project.color === "lilac" ? "lilac-ink" : c.project.color})"></span><div><div class="t">${icon("commit")}${esc(c.msg)}</div><div class="s">${esc(c.project.name)}, ${dayDiff(c.when) === 0 ? time(c.when) : ago(c.when).toLowerCase()}</div></div><span class="n">+${c.add} −${c.del}</span></a>`).join("")
-          : `<div class="empty"><b>No commits yet this week</b>Commits from every project show up here.</div>`}
-      </section>
-      ${ideasCard(null)}
+    <div class="ov-grid">
+      <div class="ov-a"><h2 class="sec-t">Activity</h2>${activityCard()}</div>
+      <div class="ov-b"><div class="sec-row"><h2 class="sec-t">Pinned</h2><span class="hint">${state.pinNote || `${active} active, ${quiet} going quiet`}</span></div><div class="pcards">${pinCards()}</div></div>
+      <div class="ov-c">
+        <div class="sec-row"><h2 class="sec-t">${quiet ? `${quiet} ${quiet === 1 ? "project is" : "projects are"} going quiet` : "Every project is moving"}</h2>
+          ${!state.query && old.length ? `<button class="chip" data-old>${state.showOld ? "Hide older" : `Show ${old.length} older`}${icon("chev")}</button>` : ""}</div>
+        ${state.undo ? `<div class="undo" role="status">Stopped tracking ${esc(state.undo.name)}.<button data-restore="${esc(state.undo.id)}">Undo</button></div>` : ""}
+        ${rows ? `<table class="ptbl"><thead><tr><th>Project</th><th class="num">Last change</th><th class="num">Uncommitted</th><th>Status</th><th class="pin-col">Pin</th></tr></thead><tbody>${rows}</tbody></table>`
+          : `<div class="empty"><b>No projects match “${esc(state.query)}”</b>Try a service like Stripe, a stack like Next.js, or clear the search.</div>`}
+        ${state.hidden.length ? `<div class="untracked"><button data-hidden-toggle aria-expanded="${state.showHidden}">${state.hidden.length} ${state.hidden.length === 1 ? "project" : "projects"} not tracked${icon("chev")}</button>
+          ${state.showHidden ? `<div class="untracked-list">${state.hidden.map(h => `<div><span>${esc(h.name)}</span><button class="btn sm" data-restore="${esc(h.id)}">Track again</button></div>`).join("")}</div>` : ""}</div>` : ""}
+      </div>
+      <div class="ov-d">${ideasPromo()}</div>
     </div>`;
+}
+
+function ideasView() {
+  return `<div class="ideas-page">${ideasCard(null, true)}</div>`;
 }
 
 function servicesCard(p) {
@@ -254,7 +280,7 @@ function builtCard(p) {
 function projectView(p) {
   const mx = Math.max(1, ...p.activity);
   return `
-    <div class="crumb"><a data-go="">Today</a>${icon("right")}${esc(p.name)}</div>
+    <div class="crumb"><a data-go="">Overview</a>${icon("right")}${esc(p.name)}</div>
     <div class="ph"><div>
       <h1>${tile(p, "lg")}${esc(p.name)} ${pill(p.status, p.blocked)}</h1>
       <div class="sub">${p.domain ? `<a href="https://${esc(p.domain)}" target="_blank" rel="noopener">${icon("globe")}${esc(p.domain)}${icon("ext")}</a>` : ""}<span>Last change ${ago(p.last).toLowerCase()}</span>${p.first ? `<span>Started ${fmtDate(p.first, true)}</span>` : ""}</div>
@@ -358,14 +384,14 @@ function ideaRow(i, showProject) {
     <button class="idea-x" data-idea-del="${esc(i.id)}" aria-label="Delete idea">${icon("trash")}</button>
   </div>`;
 }
-function ideasCard(p) {
+function ideasCard(p, all) {
   const mine = state.ideas.filter(i => !p || i.project === p.id);
   const open = mine.filter(i => !i.done), done = mine.filter(i => i.done);
   const list = [...open, ...(state.showDone ? done : [])];
   return `<section class="card ideas-card">
     <div class="card-h">${icon("bulb")}<h2>${p ? "Ideas" : "Ideas"}</h2><span class="grow"></span><button class="link" data-capture="${p ? p.id : ""}">${icon("plus")}Add</button></div>
-    ${list.length ? list.slice(0, p ? 50 : 8).map(i => ideaRow(i, !p)).join("") : `<div class="empty"><b>${p ? `No ideas for ${esc(p.name)} yet` : "No ideas yet"}</b>When one hits, tap <b class="inline">Capture idea</b>${p ? "" : " (the + button on your phone)"}, type it and press Enter. It takes a few seconds.</div>`}
-    ${!p && open.length > 8 ? `<div class="showmore"><span class="hint">${open.length - 8} more open ideas</span></div>` : ""}
+    ${list.length ? list.slice(0, p || all ? 300 : 8).map(i => ideaRow(i, !p)).join("") : `<div class="empty"><b>${p ? `No ideas for ${esc(p.name)} yet` : "No ideas yet"}</b>When one hits, tap <b class="inline">Capture idea</b>${p ? "" : " (the + button on your phone)"}, type it and press Enter. It takes a few seconds.</div>`}
+    ${!p && !all && open.length > 8 ? `<div class="showmore"><span class="hint">${open.length - 8} more open ideas</span></div>` : ""}
     ${done.length ? `<div class="showmore"><button data-show-done>${state.showDone ? "Hide done" : `Show ${done.length} done`}</button></div>` : ""}
   </section>`;
 }
@@ -400,8 +426,10 @@ async function saveCapture() {
 function render() {
   sidebar();
   const p = P.find(x => x.id === state.view);
-  byId("view").innerHTML = p ? projectView(p) : state.view === "services" ? servicesView() : todayView();
-  document.title = p ? `${p.name} · Dashboard` : "Dashboard";
+  byId("view").innerHTML = p ? projectView(p) : state.view === "services" ? servicesView() : state.view === "ideas" ? ideasView() : todayView();
+  byId("pageTitle").textContent = p ? "" : state.view === "services" ? "Services" : state.view === "ideas" ? "Ideas" : "Overview";
+  document.body.dataset.view = p ? "project" : state.view || "overview";
+  document.title = p ? `${p.name}, Dashboard` : "Dashboard";
 }
 
 document.addEventListener("click", e => {
@@ -453,5 +481,5 @@ for (const id of ["q", "q2"]) byId(id).addEventListener("input", e => {
   render();
 });
 const start = location.hash.slice(1);
-state.view = P.some(p => p.id === start) || start === "services" ? start : "";
+state.view = P.some(p => p.id === start) || start === "services" || start === "ideas" ? start : "";
 render();
